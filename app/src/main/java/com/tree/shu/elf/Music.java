@@ -152,13 +152,17 @@ public class Music {
             e.printStackTrace();
         }
         isPause = false;
-
+        ViewControlContainer.getInstance().runPlay(R.drawable.ic_play_running);
         // 异步准备Prepared完成监听
         mediaPlayer.setOnPreparedListener(mediaPlayer -> {
             // 开始播放
             mediaPlayer.start();
             updateMusicView();
             ViewControlContainer.getInstance().startSeekBar();
+        });
+
+        mediaPlayer.setOnSeekCompleteListener(mediaPlayer -> {
+
         });
     }
 

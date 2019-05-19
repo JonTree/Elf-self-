@@ -28,8 +28,9 @@ public class ThreadPoolUtils {
     public final int SHOW_LONG_TOAST = 5;
     public final int UPDATA_SEEK_BAR = 6;
     public final int LOAD_LRC = 7;
-    private static final int REFRESH = 8;
-    private static final int CLEAR_DRAGGED = 9;
+    private final int REFRESH = 8;
+    private final int CLEAR_DRAGGED = 9;
+    public final int UP_play = 10;
 
 
     private static ThreadPoolUtils threadPoolUtils;//静态的对象引用
@@ -45,7 +46,7 @@ public class ThreadPoolUtils {
                     imageView.setImageBitmap(bitmap);
                     break;
                 case SET_DEFAULT_IMAGE:
-                    ImageView imageView1 = (ImageView)(msg.obj);
+                    ImageView imageView1 = (ImageView) (msg.obj);
                     imageView1.setImageResource(R.drawable.ic_occupation);
                     break;
 
@@ -53,8 +54,8 @@ public class ThreadPoolUtils {
                     MyMessage myMessage = (MyMessage) msg.obj;
                     TextView song_name = (TextView) (myMessage).getObjectList().get(0);
                     TextView singer_name = (TextView) (myMessage).getObjectList().get(1);
-                    song_name.setText(myMessage.getObjectObjectMap().get(song_name)+"");
-                    singer_name.setText(myMessage.getObjectObjectMap().get(singer_name)+"");
+                    song_name.setText(myMessage.getObjectObjectMap().get(song_name) + "");
+                    singer_name.setText(myMessage.getObjectObjectMap().get(singer_name) + "");
                     break;
 
                 case SHOW_LONG_TOAST:
@@ -66,21 +67,10 @@ public class ThreadPoolUtils {
                 case UPDATA_SEEK_BAR:
                     ViewControlContainer.getInstance().getSeek_bar_in_playactivity().setProgress(msg.arg1);
                     break;
-                case LOAD_LRC:
-                    try {
-//                        ViewControlContainer.getInstance().getPlayLrcView().loadLrc((String) msg.obj);
-                    } catch (Exception e) {
-                        e.printStackTrace();
-                    }
+                case UP_play:
+                    ViewControlContainer.getInstance().getPlay_button_in_playactivity().setImageResource(msg.arg1);
                     break;
-                case REFRESH:
-//                    LrcView lrcView = ViewControlContainer.getInstance().getPlayLrcView();
-//                    lrcView.REFRESH();
-                    break;
-                case CLEAR_DRAGGED:
-//                    LrcView lrcView1 = ViewControlContainer.getInstance().getPlayLrcView();
-//                    lrcView1.backToPlayingLine(lrcView1.getmDragged(), 0);
-                    break;
+
             }
         }
     };

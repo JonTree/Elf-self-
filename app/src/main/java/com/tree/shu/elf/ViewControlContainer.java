@@ -51,6 +51,8 @@ public class ViewControlContainer implements View.OnClickListener {
 
     boolean isOtherSeekBarUP = false;
 
+    boolean isseekbarHold = false;
+
 
     public IActivity getMainActivity() {
         return mainActivity;
@@ -126,10 +128,30 @@ public class ViewControlContainer implements View.OnClickListener {
             content_fra_evaluation_botton.addView(content_evaluate);
         }
         {
-//           playLrcView = (LrcView) View.inflate(MyApplication.getContext(), R.layout.lrc_view, null);
             play_button_in_playactivity = (ImageView) View.inflate(MyApplication.getContext(),R.layout.button_paly,null);
             play_button_in_playactivity.setOnClickListener(this);
             seek_bar_in_playactivity = (SeekBar) View.inflate(MyApplication.getContext(), R.layout.seek_bar, null);
+            seek_bar_in_playactivity.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
+
+                //进度条发生改变时会触发
+                @Override
+                public void onProgressChanged(SeekBar seekBar, int progress, boolean b) {
+                }
+
+                //按住seekbar时会触发
+                @Override
+                public void onStartTrackingTouch(SeekBar seekBar) {
+                    isseekbarHold = true;
+                }
+
+                //放开seekbar时会触发
+                @Override
+                public void onStopTrackingTouch(SeekBar seekBar) {
+                    Music.getInstance().getMediaPlayer().seekTo(seekBar.getProgress());
+                    isseekbarHold = false;
+
+                }
+            });
         }
     }
 
@@ -140,9 +162,6 @@ public class ViewControlContainer implements View.OnClickListener {
         if (play_button_in_playactivity.getParent() != null) {
             ((ViewGroup) play_button_in_playactivity.getParent()).removeAllViews();
         }
-//        if (playLrcView.getParent() != null) {
-//            ((ViewGroup) playLrcView.getParent()).removeAllViews();
-//        }
     }
 
 
@@ -155,9 +174,7 @@ public class ViewControlContainer implements View.OnClickListener {
     }
 
 
-//    public LrcView getPlayLrcView() {
-//        return playLrcView;
-//    }
+
 
 
     public RelativeLayout getContent_fra_evaluation() {
@@ -184,9 +201,12 @@ public class ViewControlContainer implements View.OnClickListener {
                 if (isOtherSeekBarUP) {
                     return;
                 }
-//                ViewControlContainer.getInstance().getPlayLrcView().updateTime(Music.getInstance().getMediaPlayer().getCurrentPosition());
-//                playLrcView.updateTime(Music.getInstance().getMediaPlayer().getCurrentPosition());
-                upSeekBar(Music.getInstance().getMediaPlayer().getCurrentPosition());
+                if (isseekbarHold == true) {
+                    continue;
+                }
+                if (Music.getInstance().getMediaPlayer() != null) {
+                    upSeekBar(Music.getInstance().getMediaPlayer().getCurrentPosition());
+                }
             }
         };
         new Thread(runnable).start();
@@ -245,13 +265,13 @@ public class ViewControlContainer implements View.OnClickListener {
             case R.id.play:
                 if (Music.getInstance().getIsPause()) {
                     Music.getInstance().play();
-                    play_button_in_playactivity.setImageResource(R.drawable.ic_play_running);
+                    runPlay(R.drawable.ic_play_running);
                     Music.getInstance().setIsPause(false);
                 }else {
                     if (Music.getInstance().getMediaPlayer().isPlaying()) {
                         Music.getInstance().setIsPause(true);
                         Music.getInstance().getMediaPlayer().pause();
-                        play_button_in_playactivity.setImageResource(R.drawable.ic_play_pause);
+                        runPlay(R.drawable.ic_play_pause);
                     }
                 }
                 break;
@@ -259,6 +279,12 @@ public class ViewControlContainer implements View.OnClickListener {
         }
     }
 
+    public void runPlay(int p) {
+        Message message = new Message();
+        message.what = ThreadPoolUtils.getThreadPoolUtils().UP_play;
+        message.arg1 = p;
+        ThreadPoolUtils.getThreadPoolUtils().getHandler().sendMessage(message);
+    }
 
 
     public String getPresentMood() {

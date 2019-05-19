@@ -3,24 +3,22 @@ package com.tree.shu.elf.activity;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Message;
-import android.view.Gravity;
 import android.support.v4.view.GravityCompat;
-import android.view.MenuItem;
 import android.support.v4.widget.DrawerLayout;
-
 import android.support.v7.app.AppCompatActivity;
 import android.support.v7.widget.Toolbar;
+import android.view.Gravity;
 import android.view.Menu;
+import android.view.MenuItem;
 import android.widget.ImageView;
 import android.widget.RelativeLayout;
 import android.widget.TextView;
 import android.widget.Toast;
 
-import com.tree.shu.elf.Bean.SongListInformationBean;
 import com.tree.shu.elf.Music;
 import com.tree.shu.elf.R;
-import com.tree.shu.elf.tools.OtherTools;
 import com.tree.shu.elf.ViewControlContainer;
+import com.tree.shu.elf.tools.OtherTools;
 
 public class MainActivity extends AppCompatActivity implements IActivity{
 
@@ -98,7 +96,6 @@ public class MainActivity extends AppCompatActivity implements IActivity{
     protected void onDestroy() {
         super.onDestroy();
         ViewControlContainer.getInstance().unBindMainActivity();
-        super.onStop();
         // 释放mediaPlayer
         if (Music.getInstance().getMediaPlayer() != null) {
             Music.getInstance().getMediaPlayer().stop();
