@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent">
+
+    <ImageView
+        android:id="@+id/mood_clam"
+        android:src="@drawable/ic_mood_clam"
+        android:layout_marginBottom="10dp"
+        android:scaleType="centerCrop"
+        android:layout_width="45dp"
+        android:layout_height="45dp" />
+   <ImageView
+        android:id="@+id/mood_exciting"
+       android:src="@drawable/ic_mood_exciting"
+        android:scaleType="centerCrop"
+       android:layout_marginBottom="10dp"
+       android:layout_width="45dp"
+        android:layout_height="45dp" />
+   <ImageView
+        android:id="@+id/mood_happy"
+       android:layout_marginBottom="10dp"
+       android:src="@drawable/ic_mood_happy"
+        android:scaleType="centerCrop"
+        android:layout_width="45dp"
+        android:layout_height="45dp" />
+   <ImageView
+        android:id="@+id/mood_unhappy"
+       android:layout_marginBottom="10dp"
+       android:src="@drawable/ic_mood_unhappy"
+        android:scaleType="centerCrop"
+        android:layout_width="45dp"
+        android:layout_height="45dp" />
+
+</LinearLayout>
