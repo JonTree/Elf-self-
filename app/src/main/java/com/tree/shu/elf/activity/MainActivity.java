@@ -37,6 +37,8 @@ public class MainActivity extends AppCompatActivity implements IActivity{
 
     boolean first_start = true;
 
+    boolean activityVisible = false;
+
     Handler handler = new Handler(){
         @Override
         public void handleMessage(Message msg) {
@@ -78,6 +80,18 @@ public class MainActivity extends AppCompatActivity implements IActivity{
         if (first_start) {
             first_start = false;
         }
+        activityVisible = true;
+    }
+
+    @Override
+    protected void onPause() {
+        super.onPause();
+        activityVisible = false;
+    }
+
+
+    public boolean getActivityVisible() {
+        return activityVisible;
     }
 
     @Override

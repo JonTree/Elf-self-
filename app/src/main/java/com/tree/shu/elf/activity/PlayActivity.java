@@ -23,7 +23,6 @@ public class PlayActivity extends AppCompatActivity implements IActivity, View.O
     TextView singer_name;
     ImageView album_icon;
 
-    ImageView play;
     ImageView move_back;
     ImageView move_forward;
 
@@ -31,8 +30,13 @@ public class PlayActivity extends AppCompatActivity implements IActivity, View.O
     String nowPlayMusic;
 
     FrameLayout content_lrc;
+    FrameLayout content_play;
+    FrameLayout content_seek_bar;
 
     boolean first_start = true;
+
+    boolean activityVisible = false;
+
 
 
 
@@ -54,14 +58,17 @@ public class PlayActivity extends AppCompatActivity implements IActivity, View.O
         tiltle = toolbar.findViewById(R.id.toolbar_title);
         singer_name = findViewById(R.id.play_singer_name);
         album_icon = findViewById(R.id.album_icon);
-        play = findViewById(R.id.play);
         move_back = findViewById(R.id.move_back);
         move_forward = findViewById(R.id.move_forward);
         move_back.setOnClickListener(this);
-        play.setOnClickListener(this);
         move_forward.setOnClickListener(this);
+        ViewControlContainer.getInstance().removeParent();
         content_lrc = findViewById(R.id.content_lrc);
-        content_lrc.addView(ViewControlContainer.getInstance().getPlayLrcView());
+//        content_lrc.addView(ViewControlContainer.getInstance().getPlayLrcView());
+        content_play = findViewById(R.id.content_paly);
+        content_play.addView(ViewControlContainer.getInstance().getPlay_button_in_playactivity());
+        content_seek_bar = findViewById(R.id.content_seek_bar);
+        content_seek_bar.addView(ViewControlContainer.getInstance().getSeek_bar_in_playactivity());
         songChange();
     }
 
@@ -79,6 +86,13 @@ public class PlayActivity extends AppCompatActivity implements IActivity, View.O
         if (first_start) {
             first_start = false;
         }
+        activityVisible = true;
+    }
+
+    @Override
+    protected void onPause() {
+        super.onPause();
+        activityVisible = false;
     }
 
     @Override
@@ -87,10 +101,16 @@ public class PlayActivity extends AppCompatActivity implements IActivity, View.O
     }
 
     @Override
+    public boolean getActivityVisible() {
+        return false;
+    }
+
+    @Override
     protected void onDestroy() {
         super.onDestroy();
         ViewControlContainer.getInstance().unBindPlayActivity();
         content_lrc.removeAllViews();
+        content_play.removeAllViews();
     }
 
     @Override
@@ -118,12 +138,14 @@ public class PlayActivity extends AppCompatActivity implements IActivity, View.O
             case R.id.move_back:
                 Music.getInstance().setActivityView(PlayActivity.this,tiltle,singer_name,album_icon,true);
                 break;
-            case R.id.play:
-                break;
             case R.id.move_forward:
-                Music.getInstance().setActivityView(true,PlayActivity.this,tiltle,singer_name,album_icon);
+                next();
                 break;
 
         }
+    }
+
+    public void next() {
+        Music.getInstance().setActivityView(true, PlayActivity.this,tiltle,singer_name,album_icon);
     }
 }

@@ -35,6 +35,10 @@ public class InternetUtils {
         return ThreadPoolUtils.getThreadPoolUtils().submit(task);
     }
 
+    public static String get(String url) {
+        return get(url, null);
+    }
+
     public static String get(String url, String param) {
         String responseData = null;
         HttpURLConnection httpURLConnection = null;

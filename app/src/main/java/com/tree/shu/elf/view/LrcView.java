@@ -1,408 +1,959 @@
 package com.tree.shu.elf.view;
 
+import android.animation.Animator;
+import android.animation.AnimatorListenerAdapter;
 import android.animation.ValueAnimator;
-import android.annotation.SuppressLint;
 import android.content.Context;
 import android.graphics.Canvas;
+import android.graphics.Color;
+import android.graphics.DashPathEffect;
 import android.graphics.Paint;
-import android.graphics.drawable.Drawable;
-import android.os.AsyncTask;
+import android.graphics.Path;
 import android.os.Looper;
 import android.text.Layout;
 import android.text.StaticLayout;
 import android.text.TextPaint;
-import android.text.format.DateUtils;
+import android.text.TextUtils;
 import android.util.AttributeSet;
+import android.util.Log;
 import android.view.GestureDetector;
+import android.view.MotionEvent;
 import android.view.View;
-import android.view.animation.LinearInterpolator;
-import android.widget.Scroller;
-import android.widget.SeekBar;
 
+import com.tree.shu.elf.tools.ThreadPoolUtils;
 
+import java.io.BufferedReader;
 import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileNotFoundException;
+import java.io.IOException;
+import java.io.InputStreamReader;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.List;
 
 /**
  * 歌词
  * Created by wcy on 2015/11/9.
  */
-public class LrcView extends View {
-    private static final long ADJUST_DURATION = 100;
-    private static final long TIMELINE_KEEP_TIME = 4 * DateUtils.SECOND_IN_MILLIS;
 
-    private List<LrcEntry> mLrcEntryList = new ArrayList<>();
-    private TextPaint mLrcPaint = new TextPaint();
-    private TextPaint mTimePaint = new TextPaint();
-    private Paint.FontMetrics mTimeFontMetrics;
-    private Drawable mPlayDrawable;
-    private float mDividerHeight;
-    private long mAnimationDuration;
-    private int mNormalTextColor;
-    private int mCurrentTextColor;
-    private int mTimelineTextColor;
-    private int mTimelineColor;
-    private int mTimeTextColor;
-    private int mDrawableWidth;
-    private int mTimeTextWidth;
-    private String mDefaultLabel;
-    private float mLrcPadding;
-    private ValueAnimator mAnimator;
-    private GestureDetector mGestureDetector;
-    private Scroller mScroller;
-    private float mOffset;
-    private int mCurrentLine;
-    private Object mFlag;
-    private boolean isTouching;
-    private boolean isFling;
+public class LrcView extends View implements GestureDetector.OnGestureListener {
 
+    private LyricInfo mLyricInfo;//歌词信息
+    private List<LineInfo> mLines;//歌词行List
+
+    private Paint mPaint;//指示器画笔
+    private TextPaint mTextPaint;//歌词画笔
+    private StaticLayout mStaticLayout;//绘制歌词区域
+
+    private int mViewHeight = 0;//控件高度
+    private int mViewWidth = 0;//控件宽度
+
+    private String mDefaultText = "";//无歌词时显示的内容
+    private int mDuration = 0;//歌曲总时长
+    private int mCurrentPosition = 0;//当前播放位置
+    private float mLineSpace = 0;//歌词间距
+    private int mLeftAndRightPadding = 20;//歌词左右间距
+    private int mPlayingLyricSize = 0;//播放行歌词字体大小
+    private int mUnPlayingLyricSize = 0;//未播放行歌词字体大小
+    private int mPlayingLyricColor = Color.parseColor("#F3520F");//播放行歌词字体颜色
+    private int mUnPlayingLyricColor = Color.parseColor("#456789");//未播放行歌词字体颜色
+    private float mCurrentLineTop = 0;//播放行顶部坐标
+    private float mCurrentLineBottom = 0;//播放行底部坐标
+
+    private int mCurrentLineIndex = 0;//当前播放行索引
+    private int mNewLineIndex = 0;//当前播放行下一行索引
+
+    private boolean isDragging = false;//是否拖动中
+    private GestureDetector mGestureDetector;//手势监听
+    private float mSpeed = 4;//拖动歌词速度
+    private float mPartOfFling = 0;//滑动距离除以拖动歌词速度
+    private boolean isFlinging = false;//是否处于滑动中
+    private ValueAnimator mFlingAnimator;//滑动动画
+    private float mDraggedOffset = 0;//拖动完成后中心与歌词行中心差值
+    private float mDragged = 0;//拖动歌词的距离
+    private int mDraggedLine = 0;//拖动后歌词处于的位置
+    private boolean hasMessage = false;//按下屏幕时记录是否有回滚到当前播放位置任务
+    private int mClearTime = 2000;//拖动操作完成后返回播放位置的时间间隔
+    private int mBackTime = 1000;//拖动操作完成后返回播放位置的动画时间
+    private float mIndicatorRadius = 0;//指示器半径
+    private float mIndicatorCenterX;//指示器中心点X轴坐标
+    private float mIndicatorCenterY;//指示器中心点Y轴坐标
+    private int mIndicatorLeft = 10;//指示器左边距
+    private int mIndicatorColor = Color.parseColor("#F3520F");//指示器颜色
+    private int mBrokenLineWidth = 20;//虚线单个Item长度
+    private int mBrokenLineSpace = 20;//虚线间隔
+    private int mBrokenLineLeft = 20;//虚线左边距
+    private int mBrokenLineRight = 20;//虚线右边距
+    private IndicatorListener mIndicatorListener;//指示器播放按钮点击回调接口
+
+    private int mAnimatorDuration = 800;//歌词滚动动画时长
+
+
+    private int mRefreshTime = 400;//歌词检索刷新频率
+    private boolean isChanged = true;//用来记录是否是否换行
+
+    private float mDrawingStartY = 0;//开始绘制歌词Y轴位置
+    private float mOffset = 0;//歌词滚动过的位置
+    private static final int REFRESH = 8;
+    private static final int CLEAR_DRAGGED = 9;
+
+
+    public void REFRESH() {
+//        LrcView lrcView = ViewControlContainer.getInstance().getPlayLrcView();
+        mCurrentPosition += mRefreshTime;
+        measureCurrentLine();
+        if (mNewLineIndex != mCurrentLineIndex && isChanged && !isDragging && mDragged == 0) {
+            smoothScrollTo(mLines.get(mCurrentLineIndex).getMiddle(), mLines.get(mNewLineIndex).getMiddle());
+            isChanged = false;
+        }
+        Log.e("mCurrentPosition=",""+mCurrentPosition);
+        if (mCurrentPosition <= mDuration)
+            ThreadPoolUtils.getThreadPoolUtils().getHandler().sendEmptyMessageDelayed(REFRESH, mRefreshTime);
+
+
+    }
+
+    public float getmDragged() {
+        return mDragged;
+    }
 
     public LrcView(Context context) {
-        this(context, null);
+        super(context);
+        init();
     }
 
     public LrcView(Context context, AttributeSet attrs) {
-        this(context, attrs, 0);
+        super(context, attrs);
+        init();
     }
 
     public LrcView(Context context, AttributeSet attrs, int defStyleAttr) {
         super(context, attrs, defStyleAttr);
-        init(attrs);
+        init();
     }
-
-    private void init(AttributeSet attrs) {
-        mDrawableWidth = 10;
-        mTimeTextWidth = 10;
-
-        mLrcPaint.setAntiAlias(true);
-        mLrcPaint.setTextSize(14);
-        mLrcPaint.setTextAlign(Paint.Align.LEFT);
-        mTimePaint.setAntiAlias(true);
-        mTimePaint.setTextSize(14);
-        mTimePaint.setTextAlign(Paint.Align.CENTER);
-        //noinspection SuspiciousNameCombination
-        mTimePaint.setStrokeWidth(10);
-        mTimePaint.setStrokeCap(Paint.Cap.ROUND);
-        mTimeFontMetrics = mTimePaint.getFontMetrics();
-
-        mScroller = new Scroller(getContext());
-    }
-
-    public void setNormalColor(int normalColor) {
-        mNormalTextColor = normalColor;
-        postInvalidate();
-    }
-
-    public void setCurrentColor(int currentColor) {
-        mCurrentTextColor = currentColor;
-        postInvalidate();
-    }
-
-    public void setTimelineTextColor(int timelineTextColor) {
-        mTimelineTextColor = timelineTextColor;
-        postInvalidate();
-    }
-
-    public void setTimelineColor(int timelineColor) {
-        mTimelineColor = timelineColor;
-        postInvalidate();
-    }
-
-    public void setTimeTextColor(int timeTextColor) {
-        mTimeTextColor = timeTextColor;
-        postInvalidate();
-    }
-
 
     /**
-     * 设置歌词为空时屏幕中央显示的文字，如“暂无歌词”
+     * 初始化
      */
-    public void setLabel(final String label) {
-        runOnUi(new Runnable() {
-            @Override
-            public void run() {
-                mDefaultLabel = label;
-                invalidate();
+    private void init() {
+        mPaint = new Paint();
+        mPaint.setAntiAlias(true);
+        setIndicatorPaint();
+        mTextPaint = new TextPaint();
+        mTextPaint.setAntiAlias(true);
+        setUnPlayingTextPaint();
+        Looper.prepare();
+        mGestureDetector = new GestureDetector(getContext(), this);
+    }
+
+    /**
+     * 设置指示器画笔
+     */
+    private void setIndicatorPaint() {
+        mPaint.setColor(mIndicatorColor);
+    }
+
+    /**
+     * 设置播放行画笔及指示器画笔
+     */
+    private void setPlayingTextPaint() {
+        mTextPaint.setTextSize(mPlayingLyricSize);
+        mTextPaint.setColor(mPlayingLyricColor);
+        mPaint.setColor(mPlayingLyricColor);
+    }
+
+    /**
+     * 设置未播放行画笔
+     */
+    private void setUnPlayingTextPaint() {
+        mTextPaint.setTextSize(mUnPlayingLyricSize);
+        mTextPaint.setColor(mUnPlayingLyricColor);
+    }
+
+    /**
+     * 设置当前播放位置
+     *
+     * @param current 当前播放位置
+     */
+    public void updateTime(int current) {
+        mCurrentPosition = current;
+    }
+
+    /**
+     * 设置歌曲总时长
+     *
+     * @param duration 歌曲总时长
+     */
+    public void setDuration(int duration) {
+        mDuration = duration;
+    }
+
+    /**
+     * 设置无歌词时显示的内容
+     *
+     * @param text 无歌词时显示的内容
+     */
+    public void setNoLyricText(String text) {
+        mDefaultText = text;
+    }
+
+    /**
+     * 设置歌词行间距
+     *
+     * @param space 歌词行间距
+     */
+    public void setLineSpace(float space) {
+        mLineSpace = space;
+        reDraw();
+    }
+
+    /**
+     * 设置播放行字体大小
+     *
+     * @param size 播放行字体大小
+     */
+    public void setPlayingLyricSize(int size) {
+        mPlayingLyricSize = size;
+        reDraw();
+    }
+
+    /**
+     * 设置未播放行字体大小
+     *
+     * @param size 未播放行字体大小
+     */
+    public void setUnPlayingLyricSize(int size) {
+        mUnPlayingLyricSize = size;
+        reDraw();
+    }
+
+    /**
+     * 设置播放行字体颜色
+     *
+     * @param color 播放行字体颜色
+     */
+    public void setPlayingLyricColor(int color) {
+        mPlayingLyricColor = color;
+        reDraw();
+    }
+
+    /**
+     * 设置未播放行字体颜色
+     *
+     * @param color 未播放行字体颜色
+     */
+    public void setUnPlayingLyricColor(int color) {
+        mUnPlayingLyricColor = color;
+        reDraw();
+    }
+
+    /**
+     * 设置指示器颜色
+     *
+     * @param color 指示器颜色
+     */
+    public void setIndicatorColor(int color) {
+        mIndicatorColor = color;
+        setIndicatorPaint();
+    }
+
+    /**
+     * 设置歌词，并且解析
+     *
+     * @param lyric 歌词
+     */
+    public void loadLrc(String lyric) {
+        if (!TextUtils.isEmpty(lyric)) {
+            mLyricInfo = parse_whole(lyric);
+            mLines = mLyricInfo.getSong_lines();
+        } else
+            mDefaultText = "暂无歌词";
+    }
+
+    /**
+     * 设置歌词文件，并且解析
+     *
+     * @param lryric_file 歌词文件
+     */
+    public void loadLrc(File lryric_file) {
+        BufferedReader reader = null;
+        StringBuilder lyric_builder = new StringBuilder();
+        try {
+            reader = new BufferedReader(new InputStreamReader(new FileInputStream(lryric_file)));
+            String line = "";
+            while ((line= reader.readLine())!=null){
+                lyric_builder.append(line).append("/n");
             }
-        });
-    }
-
-    /**
-     * 加载歌词文件
-     *
-     * @param lrcFile 歌词文件
-     */
-    public void loadLrc(final File lrcFile) {
-        runOnUi(new Runnable() {
-            @Override
-            public void run() {
-                reset();
-                setFlag(lrcFile);
-                new AsyncTask<File, Integer, List<LrcEntry>>() {
-                    @Override
-                    protected List<LrcEntry> doInBackground(File... params) {
-                        return LrcEntry.parseLrc(params[0]);
-                    }
-
-                    @Override
-                    protected void onPostExecute(List<LrcEntry> lrcEntries) {
-                        if (getFlag() == lrcFile) {
-                            onLrcLoaded(lrcEntries);
-                            setFlag(null);
-                        }
-                    }
-                }.execute(lrcFile);
+        } catch (FileNotFoundException e) {
+            e.printStackTrace();
+        } catch (IOException e) {
+            e.printStackTrace();
+        } finally {
+            try {
+                if (reader != null)
+                    reader.close();
+            } catch (IOException e) {
+                e.printStackTrace();
             }
-        });
+        }
+        String lyric = lyric_builder.toString();
+        if (!TextUtils.isEmpty(lyric)) {
+            mLyricInfo = parse_whole(lyric);
+            mLines = mLyricInfo.getSong_lines();
+        } else
+            mDefaultText = "暂无歌词";
     }
 
     /**
-     * 加载歌词文件
+     * 解析全部歌词
      *
-     * @param lrcText 歌词文本
+     * @param lyric 全部歌词
      */
-    public void loadLrc(final String lrcText) {
-        runOnUi(new Runnable() {
-            @Override
-            public void run() {
-                reset();
-
-                setFlag(lrcText);
-                new AsyncTask<String, Integer, List<LrcEntry>>() {
-                    @Override
-                    protected List<LrcEntry> doInBackground(String... params) {
-                        return LrcEntry.parseLrc(params[0]);
-                    }
-
-                    @Override
-                    protected void onPostExecute(List<LrcEntry> lrcEntries) {
-                        if (getFlag() == lrcText) {
-                            onLrcLoaded(lrcEntries);
-                            setFlag(null);
-                        }
-                    }
-                }.execute(lrcText);
-            }
-        });
+    private LyricInfo parse_whole(String lyric) {
+        String[] split = lyric.split("\t");
+        LyricInfo lyricInfo = new LyricInfo();
+        for (String line : split) {
+            parse_line(lyricInfo, line);
+        }
+        return lyricInfo;
     }
 
     /**
-     * 歌词是否有效
-     *
-     * @return true，如果歌词有效，否则false
+     * 重新绘制View
      */
-    public boolean hasLrc() {
-        return !mLrcEntryList.isEmpty();
+    private void reDraw() {
+        if (Looper.myLooper() == Looper.getMainLooper())
+            invalidate();
+        else
+            postInvalidate();
     }
 
     /**
-     * 刷新歌词
+     * 解析单行歌词
      *
-     * @param time 当前播放时间
+     * @param line 单行歌词
      */
-    public void updateTime(final long time) {
-        runOnUi(() -> {
-            if (!hasLrc()) {
+    private void parse_line(LyricInfo lyricInfo, String line) {
+        line = line.replace("\n", "").replace("\t", "").trim();
+        int index = line.lastIndexOf("]");
+        if (!TextUtils.isEmpty(line)) {
+            if (line.startsWith("[offset:")) {
+                // 时间偏移量
+                String string = line.substring(8, index).trim();
+                lyricInfo.setSong_offset(Long.parseLong(string));
                 return;
             }
-            int line = findShowLine(time);
-            if (line != mCurrentLine) {
-                mCurrentLine = line;
-                scrollTo(line);
+            if (line.startsWith("[ti:")) {
+                // 标题
+                String string = line.substring(4, index).trim();
+                lyricInfo.setSong_title(string);
+                return;
             }
-        });
+            if (line.startsWith("[ar:")) {
+                // 作者
+                String string = line.substring(4, index).trim();
+                lyricInfo.setSong_artist(string);
+                return;
+            }
+            if (line.startsWith("[al:")) {
+                // 所属专辑
+                String string = line.substring(4, index).trim();
+                lyricInfo.setSong_album(string);
+                return;
+            }
+            if (line.startsWith("[by:")) {
+                return;
+            }
+            if (index == 9 && line.trim().length() > 10) {
+                // 歌词内容
+                LineInfo lineInfo = new LineInfo();
+                lineInfo.setContent(line.substring(10, line.length()));
+                lineInfo.setStart(measureStartTimeMillis(line.substring(0, 10)));
+                lyricInfo.addSong_lines(lineInfo);
+            }
+        }
+    }
+
+    /**
+     * 从字符串中获得时间值
+     *
+     * @param str 单行歌词开始部分时间字符串
+     * @return 毫秒单位的时间值
+     */
+    private int measureStartTimeMillis(String str) {
+        int minute = Integer.parseInt(str.substring(1, 3));
+        int second = Integer.parseInt(str.substring(4, 6));
+        int millisecond = Integer.parseInt(str.substring(7, 9));
+        return millisecond + second * 1000 + minute * 60 * 1000;
     }
 
 
+    /**
+     * 判断当前时间所属行,使用二分查找减少计算时间
+     */
+    private void measureCurrentLine() {
+        int low = 0, high = mLines.size() - 1, mid = 0;
+        while (low <= high) {
+            if (mCurrentPosition <= mLines.get(0).getStart()) {
+                mNewLineIndex = 0;
+                break;
+            }
+            if (mCurrentPosition >= mLines.get(mLines.size() - 1).getStart()) {
+                mNewLineIndex = mLines.size() - 1;
+                break;
+            }
+            mid = (low + high) / 2;
+            if (mCurrentPosition >= mLines.get(mid).getStart()) {
+                if (mCurrentPosition < mLines.get(mid + 1).getStart()) {
+                    mNewLineIndex = mid;
+                    break;
+                } else {
+                    low = mid + 1;
+                }
+            } else if (mCurrentPosition < mLines.get(mid).getStart()) {
+                if (mCurrentPosition >= mLines.get(mid - 1).getStart()) {
+                    mNewLineIndex = mid - 1;
+                    break;
+                } else {
+                    high = mid - 1;
+                }
+            }
+        }
+    }
+
+    /**
+     * 平滑滚动
+     */
+    private void smoothScrollTo(final float start, float end) {
+        ValueAnimator animator = ValueAnimator.ofFloat(start, end);
+        animator.setDuration(mAnimatorDuration);
+        animator.addUpdateListener(new ValueAnimator.AnimatorUpdateListener() {
+            @Override
+            public void onAnimationUpdate(ValueAnimator valueAnimator) {
+                mOffset = (float) valueAnimator.getAnimatedValue() - start;
+                reDraw();
+            }
+        });
+        animator.addListener(new AnimatorListenerAdapter() {
+            @Override
+            public void onAnimationEnd(Animator animation) {
+                mCurrentLineIndex = mNewLineIndex;
+                mOffset = 0;
+                isChanged = true;
+                reDraw();
+            }
+        });
+        animator.start();
+    }
+
+    /**
+     * 处理拖动后中心和之间拖动后所属行中心的偏移量
+     * <p>
+     * 暂时取消此功能
+     *
+     * @param start
+     * @param end
+     */
+    private void dealWithOffset(final float start, float end) {
+
+        ValueAnimator animator = ValueAnimator.ofFloat(start, end);
+        animator.setDuration(500);
+        animator.addUpdateListener(new ValueAnimator.AnimatorUpdateListener() {
+
+            @Override
+            public void onAnimationUpdate(ValueAnimator valueAnimator) {
+                float fraction = valueAnimator.getAnimatedFraction();
+                mDragged += fraction;
+                reDraw();
+            }
+        });
+        animator.addListener(new AnimatorListenerAdapter() {
+            @Override
+            public void onAnimationEnd(Animator animation) {
+                mOffset = 0;
+                isChanged = true;
+                reDraw();
+            }
+        });
+        animator.start();
+    }
+
+    /**
+     * 平滑滚动到播放位置
+     *
+     * @param start
+     * @param end
+     */
+    public void backToPlayingLine(final float start, float end) {
+
+        ValueAnimator animator = ValueAnimator.ofFloat(start, end);
+        animator.setDuration(mBackTime);
+        animator.addUpdateListener(new ValueAnimator.AnimatorUpdateListener() {
+            @Override
+            public void onAnimationUpdate(ValueAnimator valueAnimator) {
+                mDragged = (float) valueAnimator.getAnimatedValue();
+                reDraw();
+            }
+        });
+        animator.addListener(new AnimatorListenerAdapter() {
+            @Override
+            public void onAnimationEnd(Animator animation) {
+                mDragged = 0;
+                reDraw();
+            }
+        });
+        animator.start();
+    }
+
+    /**
+     * 设置指示器按钮点击监听
+     *
+     * @param listener 指示器按钮点击监听
+     */
+    public void setOnIndicatorPlayListener(IndicatorListener listener) {
+        this.mIndicatorListener = listener;
+    }
+
+    /**
+     * 开始
+     */
+    public void start() {
+        ThreadPoolUtils.getThreadPoolUtils().getHandler().sendEmptyMessage(REFRESH);
+    }
+
+    /**
+     * 停止
+     */
+    public void stop() {
+        ThreadPoolUtils.getThreadPoolUtils().getHandler().removeCallbacksAndMessages(null);
+    }
+
+    @Override
+    protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
+        super.onMeasure(widthMeasureSpec, heightMeasureSpec);
+        //获取控件宽高
+        mViewHeight = getMeasuredHeight();
+        mViewWidth = getMeasuredWidth();
+        //根据控件大小调整歌词参数
+        mPlayingLyricSize = mViewWidth / 20;
+        mUnPlayingLyricSize = mViewWidth / 20;
+        mIndicatorRadius = mViewWidth / 40;
+        mLineSpace = mViewWidth / 28;
+    }
+
+    /**
+     * 测量行高
+     *
+     * @param content 行内容
+     */
+    private void measureLine(String content) {
+        mStaticLayout = new StaticLayout(content
+                , mTextPaint, (int) (mViewWidth - mBrokenLineRight * 3 - mIndicatorCenterX - mIndicatorRadius)
+                , Layout.Alignment.ALIGN_CENTER
+                , 1.0F
+                , 0
+                , true);
+    }
+
+    /**
+     * 测量拖动后的位置属于哪一行
+     */
+    private void measureDraggedLine() {
+        float center = mViewHeight / 2;
+        if (mDragged < 0) {
+            //向上检索
+            for (int i = mCurrentLineIndex; i >= 0; i--) {
+                LineInfo info = mLines.get(i);
+                float range_top = info.getTop() - mLineSpace / 2 - mOffset - mDragged;
+                float range_bottom = info.getBottom() + mLineSpace / 2 - mOffset - mDragged;
+                if (range_top <= center && center <= range_bottom) {
+                    mDraggedOffset = center - info.getMiddle() - mOffset - mDragged;
+                    mDraggedLine = i;
+                    break;
+                }
+            }
+        } else {
+            //向下检索
+            int total = mLines.size() - 1;
+            for (int i = mCurrentLineIndex; i <= total; i++) {
+                LineInfo info = mLines.get(i);
+                float range_top = info.getTop() - mLineSpace / 2 - mOffset - mDragged;
+                float range_bottom = info.getBottom() + mLineSpace / 2 - mOffset - mDragged;
+                if (range_top <= center && center <= range_bottom) {
+                    mDraggedOffset = center - info.getMiddle() - mOffset - mDragged;
+                    mDraggedLine = i;
+                    break;
+                }
+            }
+        }
+    }
 
     @Override
     protected void onDraw(Canvas canvas) {
         super.onDraw(canvas);
-
-        int centerY = getHeight() / 2;
-
-        // 无歌词文件
-        if (!hasLrc()) {
-            return;
-        }
-
-        int centerLine = getCenterLine();
-
-
-        canvas.translate(0, mOffset);
-
-        float y = 0;
-        for (int i = 0; i < mLrcEntryList.size(); i++) {
-            if (i > 0) {
-                y += (mLrcEntryList.get(i - 1).getHeight() + mLrcEntryList.get(i).getHeight()) / 2 + mDividerHeight;
+        Log.e("mCurrentLineIndex=",""+mCurrentLineIndex);
+        if (mLines != null) {
+            //设置指示器画笔
+            setIndicatorPaint();
+            //初始化指示器中心点坐标
+            if (mIndicatorCenterX == 0 && mIndicatorCenterY == 0) {
+                mIndicatorCenterX = mIndicatorLeft + mIndicatorRadius;
+                mIndicatorCenterY = mViewHeight / 2;
             }
-            if (i == mCurrentLine) {
-                mLrcPaint.setColor(mCurrentTextColor);
-            } else if (i == centerLine) {
-                mLrcPaint.setColor(mTimelineTextColor);
-            } else {
-                mLrcPaint.setColor(mNormalTextColor);
+
+            if (isDragging || mDragged != 0) {
+                //绘制圆
+                mPaint.setStyle(Paint.Style.STROKE);
+                canvas.drawCircle(mIndicatorCenterX,
+                        mIndicatorCenterY,
+                        mIndicatorRadius,
+                        mPaint);
+
+                //绘制虚线
+                DashPathEffect pathEffect = new DashPathEffect(new float[]{mBrokenLineWidth, mBrokenLineSpace}, 0);
+                mPaint.setPathEffect(pathEffect);
+                Path path = new Path();
+                path.moveTo(mIndicatorCenterX + mIndicatorRadius + mBrokenLineLeft, mIndicatorCenterY);
+                path.lineTo(mViewWidth - mBrokenLineRight * 2, mIndicatorCenterY);
+                canvas.drawPath(path, mPaint);
+                mPaint.setPathEffect(null);
+
+                //重置画笔
+                mPaint.setStyle(Paint.Style.FILL);
+
+                //绘制三角
+                canvas.drawLine(mIndicatorCenterX - mIndicatorRadius / 2 + 2,
+                        mIndicatorCenterY - mIndicatorRadius * 3 / 4 + 2 * ((float) Math.sqrt(3)),
+                        mIndicatorCenterX - mIndicatorRadius / 2 + 2,
+                        mIndicatorCenterY + mIndicatorRadius * 3 / 4 - 2 * ((float) Math.sqrt(3)),
+                        mPaint);
+
+                canvas.drawLine(mIndicatorCenterX - mIndicatorRadius / 2 + 2,
+                        mIndicatorCenterY + mIndicatorRadius * 3 / 4 - 2 * ((float) Math.sqrt(3)),
+                        mIndicatorCenterX + mIndicatorRadius - 2 - 4,
+                        mIndicatorCenterY,
+                        mPaint);
+
+                canvas.drawLine(mIndicatorCenterX - mIndicatorRadius / 2 + 2,
+                        mIndicatorCenterY - mIndicatorRadius * 3 / 4 + 2 * ((float) Math.sqrt(3)),
+                        mIndicatorCenterX + mIndicatorRadius - 2 - 4,
+                        mIndicatorCenterY,
+                        mPaint);
             }
-            drawText(canvas, mLrcEntryList.get(i).getStaticLayout(), y);
+
+            //设置播放行画笔
+            setPlayingTextPaint();
+            //绘制播放行
+            canvas.save();
+            LineInfo currentLine = mLines.get(mCurrentLineIndex);
+            String content = currentLine.getContent();
+            measureLine(content);
+            mCurrentLineTop = (mViewHeight - mStaticLayout.getHeight()) / 2;
+            mCurrentLineBottom = (mViewHeight + mStaticLayout.getHeight()) / 2 + mLineSpace;
+            currentLine.setTop(mCurrentLineTop);
+            currentLine.setBottom(mCurrentLineBottom);
+            currentLine.setMiddle(mViewHeight / 2);
+            canvas.translate(mIndicatorCenterX + mIndicatorRadius + mBrokenLineLeft, mCurrentLineTop - mOffset - mDragged);
+            mStaticLayout.draw(canvas);
+            canvas.restore();
+
+            //设置未播放行画笔
+            setUnPlayingTextPaint();
+            //绘制播放行前面歌词
+            if (mCurrentLineIndex != 0)
+                for (int i = mCurrentLineIndex - 1; i >= 0; i--) {
+                    LineInfo line = mLines.get(i);
+                    content = line.getContent();
+                    canvas.save();
+                    measureLine(content);
+                    mCurrentLineTop -= mStaticLayout.getHeight() + mLineSpace;
+                    line.setTop(mCurrentLineTop);
+                    line.setBottom(mCurrentLineTop + mStaticLayout.getHeight());
+                    line.setMiddle(mCurrentLineTop + mStaticLayout.getHeight() / 2);
+                    canvas.translate(mIndicatorCenterX + mIndicatorRadius + mBrokenLineLeft, mCurrentLineTop - mOffset - mDragged);
+                    mStaticLayout.draw(canvas);
+                    canvas.restore();
+                }
+            //绘制播放行后面歌词
+            if (mCurrentLineIndex != mLines.size())
+                for (int i = mCurrentLineIndex + 1; i < mLines.size(); i++) {
+                    LineInfo line = mLines.get(i);
+                    content = line.getContent();
+                    canvas.save();
+                    measureLine(content);
+                    canvas.translate(mIndicatorCenterX + mIndicatorRadius + mBrokenLineLeft, mCurrentLineBottom - mOffset - mDragged);
+                    line.setTop(mCurrentLineBottom);
+                    line.setBottom(mCurrentLineBottom + mStaticLayout.getHeight());
+                    line.setMiddle(mCurrentLineBottom + mStaticLayout.getHeight() / 2);
+                    mCurrentLineBottom += mStaticLayout.getHeight() + mLineSpace;
+                    mStaticLayout.draw(canvas);
+                    canvas.restore();
+                }
+        } else {
+            mTextPaint.setColor(mPlayingLyricColor);
+            mPaint.setTextSize(mPlayingLyricSize);
+            canvas.save();
+            measureLine(mDefaultText);
+            mDrawingStartY = (mViewHeight - mStaticLayout.getHeight()) / 2;
+            canvas.translate(mIndicatorCenterX + mIndicatorRadius + mBrokenLineLeft, mDrawingStartY);
+            mStaticLayout.draw(canvas);
+            canvas.restore();
+            reDraw();
         }
     }
 
-    /**
-     * 画一行歌词
-     *
-     * @param y 歌词中心 Y 坐标
-     */
-    private void drawText(Canvas canvas, StaticLayout staticLayout, float y) {
-        canvas.save();
-        canvas.translate(mLrcPadding, y - staticLayout.getHeight() / 2);
-        staticLayout.draw(canvas);
-        canvas.restore();
+    @Override
+    public boolean onTouchEvent(MotionEvent event) {
+        switch (event.getAction()) {
+            case MotionEvent.ACTION_DOWN://手指按下，显示指示器
+                isDragging = true;
+                if (mFlingAnimator != null)
+                    mFlingAnimator.cancel();
+                //手指触摸屏幕，取消上一次的返回播放位置延迟任务
+                hasMessage = ThreadPoolUtils.getThreadPoolUtils().getHandler().hasMessages(CLEAR_DRAGGED);
+                if (hasMessage)
+                    ThreadPoolUtils.getThreadPoolUtils().getHandler().removeMessages(CLEAR_DRAGGED);
+                reDraw();
+                break;
+            case MotionEvent.ACTION_MOVE://手指移动，拖动歌词
+
+                break;
+            case MotionEvent.ACTION_UP://手指抬起，隐藏指示器
+                if (hasMessage)
+                    ThreadPoolUtils.getThreadPoolUtils().getHandler().sendEmptyMessageDelayed(CLEAR_DRAGGED, mClearTime);
+                isDragging = false;
+//                mDragged = 0;
+                reDraw();
+                break;
+        }
+        //让GestureDetector接管onTouchEvent事件
+        mGestureDetector.onTouchEvent(event);
+        return true;
     }
 
 
-    private Runnable hideTimelineRunnable = new Runnable() {
-        @Override
-        public void run() {
-            if (hasLrc()) {
-                scrollTo(mCurrentLine);
+    //----------------------OnGestureListener方法----------------------
+    @Override
+    public boolean onDown(MotionEvent e) {
+        return false;
+    }
+
+    @Override
+    public void onShowPress(MotionEvent e) {
+
+    }
+
+    @Override
+    public boolean onSingleTapUp(MotionEvent e) {
+        float x = e.getX();
+        float y = e.getY();
+        float r_judge = (x - mIndicatorCenterX) * (x - mIndicatorCenterX) + (y - mIndicatorCenterY) * (y - mIndicatorCenterY);
+        float r = mIndicatorRadius * mIndicatorRadius;
+        //如果点击位置处于指示器播放按钮范围内
+        if (r_judge <= r && mDragged != 0) {
+            //取消上一次返回播放位置的延迟任务
+            ThreadPoolUtils.getThreadPoolUtils().getHandler().removeMessages(CLEAR_DRAGGED);
+            if (mIndicatorListener != null) {
+                mCurrentLineIndex = mDraggedLine;
+                mCurrentPosition = mLines.get(mCurrentLineIndex).getStart();
+                mIndicatorListener.onPlayClick(mCurrentPosition);
+                reDraw();
             }
+            mDragged = 0;
         }
-    };
-
-
-
-    private void onLrcLoaded(List<LrcEntry> entryList) {
-        if (entryList != null && !entryList.isEmpty()) {
-            mLrcEntryList.addAll(entryList);
-        }
-
-        initEntryList();
-        invalidate();
+        return false;
     }
 
-    private void initEntryList() {
-        if (!hasLrc() || getWidth() == 0) {
-            return;
-        }
-
-        Collections.sort(mLrcEntryList);
-
-        for (LrcEntry lrcEntry : mLrcEntryList) {
-            lrcEntry.init(mLrcPaint, (int) getLrcWidth());
-        }
-
-        mOffset = getHeight() / 2;
+    @Override
+    public boolean onScroll(MotionEvent e1, MotionEvent e2, float distanceX, float distanceY) {
+        mDragged += distanceY;
+        reDraw();
+        return false;
     }
 
-    private void reset() {
-        endAnimation();
-        mScroller.forceFinished(true);
-        isTouching = false;
-        isFling = false;
-        removeCallbacks(hideTimelineRunnable);
-        mLrcEntryList.clear();
-        mOffset = 0;
-        mCurrentLine = 0;
-        invalidate();
+    @Override
+    public void onLongPress(MotionEvent e) {
+
     }
 
-    /**
-     * 滚动到某一行
-     */
-    private void scrollTo(int line) {
-        scrollTo(line, mAnimationDuration);
-    }
-
-
-    private void scrollTo(int line, long duration) {
-        float offset = getOffset(line);
-        endAnimation();
-
-        mAnimator = ValueAnimator.ofFloat(mOffset, offset);
-        mAnimator.setDuration(duration);
-        mAnimator.setInterpolator(new LinearInterpolator());
-        mAnimator.addUpdateListener(new ValueAnimator.AnimatorUpdateListener() {
+    @Override
+    public boolean onFling(final MotionEvent e1, MotionEvent e2, float velocityX, final float velocityY) {
+        mPartOfFling = velocityY / mSpeed;
+        mFlingAnimator = ValueAnimator.ofFloat(velocityY, 0);
+        mFlingAnimator.setDuration(1000);
+        mFlingAnimator.addUpdateListener(new ValueAnimator.AnimatorUpdateListener() {
             @Override
             public void onAnimationUpdate(ValueAnimator animation) {
-                mOffset = (float) animation.getAnimatedValue();
-                invalidate();
+                float value = (float) animation.getAnimatedValue();
+                //计算当前滚动值所占比例并动态改变滑动速度
+                if (velocityY > 0) {
+                    if (value <= mPartOfFling) {
+                        mSpeed = 1;
+                    } else if (mPartOfFling < value && value <= 2 * mPartOfFling) {
+                        mSpeed = 2;
+                    } else if (2 * mPartOfFling < value && value <= 3 * mPartOfFling) {
+                        mSpeed = 3;
+                    } else if (value > 3 * mPartOfFling) {
+                        mSpeed = 4;
+                    }
+
+                    mDragged -= mSpeed;
+                } else {
+                    if (value >= mPartOfFling) {
+                        mSpeed = 1;
+                    } else if (mPartOfFling > value && value >= 2 * mPartOfFling) {
+                        mSpeed = 2;
+                    } else if (2 * mPartOfFling > value && value >= 3 * mPartOfFling) {
+                        mSpeed = 3;
+                    } else if (value < 3 * mPartOfFling) {
+                        mSpeed = 4;
+                    }
+
+                    mDragged += mSpeed;
+                }
+                reDraw();
             }
         });
-        mAnimator.start();
+        mFlingAnimator.addListener(new AnimatorListenerAdapter() {
+            @Override
+            public void onAnimationEnd(Animator animation) {
+                //滑动结束后恢复默认速度
+                mSpeed = 4;
+//                reDraw();
+
+                //计算滑动后的位置属于第几行
+                measureDraggedLine();
+                //调整差值，使中心滑动到最近的一行的中心(此功能暂时取消)
+//                dealWithOffset(mDraggedOffset, 0);
+
+                //拖动操作完成2秒后自动返回播放位置
+                ThreadPoolUtils.getThreadPoolUtils().getHandler().sendEmptyMessageDelayed(CLEAR_DRAGGED, mClearTime);
+            }
+
+            @Override
+            public void onAnimationCancel(Animator animation) {
+                //滑动取消后恢复默认速度
+                mSpeed = 4;
+            }
+        });
+        mFlingAnimator.start();
+        return false;
+    }
+    //----------------------------------------------------------------
+
+    //指示器开始按钮点击监听接口
+    public interface IndicatorListener {
+        void onPlayClick(int position);
     }
 
-    private void endAnimation() {
-        if (mAnimator != null && mAnimator.isRunning()) {
-            mAnimator.end();
+    /**
+     * 歌词行信息实体类
+     */
+    class LineInfo {
+        private String content;  // 歌词内容
+        private int start;  // 开始时间
+        private float middle, top, bottom;
+
+        public float getMiddle() {
+            return middle;
+        }
+
+        public void setMiddle(float middle) {
+            this.middle = middle;
+        }
+
+        public float getTop() {
+            return top;
+        }
+
+        public void setTop(float top) {
+            this.top = top;
+        }
+
+        public float getBottom() {
+            return bottom;
+        }
+
+        public void setBottom(float bottom) {
+            this.bottom = bottom;
+        }
+
+        public int getStart() {
+            return start;
+        }
+
+        public void setStart(int start) {
+            this.start = start;
+        }
+
+        public String getContent() {
+            return content;
+        }
+
+        public void setContent(String content) {
+            this.content = content;
         }
     }
 
     /**
-     * 二分法查找当前时间应该显示的行数（最后一个 <= time 的行数）
+     * 歌词信息实体类
      */
-    private int findShowLine(long time) {
-        int left = 0;
-        int right = mLrcEntryList.size();
-        while (left <= right) {
-            int middle = (left + right) / 2;
-            long middleTime = mLrcEntryList.get(middle).getTime();
+    class LyricInfo {
+        private List<LineInfo> song_lines;
 
-            if (time < middleTime) {
-                right = middle - 1;
-            } else {
-                if (middle + 1 >= mLrcEntryList.size() || time < mLrcEntryList.get(middle + 1).getTime()) {
-                    return middle;
-                }
+        private String song_artist;  // 歌手
+        private String song_title;  // 标题
+        private String song_album;  // 专辑
 
-                left = middle + 1;
-            }
-        }
-        return 0;
-    }
+        private long song_offset;  // 偏移量
 
-    private int getCenterLine() {
-        int centerLine = 0;
-        float minDistance = Float.MAX_VALUE;
-        for (int i = 0; i < mLrcEntryList.size(); i++) {
-            if (Math.abs(mOffset - getOffset(i)) < minDistance) {
-                minDistance = Math.abs(mOffset - getOffset(i));
-                centerLine = i;
-            }
-        }
-        return centerLine;
-    }
-
-    private float getOffset(int line) {
-        if (mLrcEntryList.get(line).getOffset() == Float.MIN_VALUE) {
-            float offset = getHeight() / 2;
-            for (int i = 1; i <= line; i++) {
-                offset -= (mLrcEntryList.get(i - 1).getHeight() + mLrcEntryList.get(i).getHeight()) / 2 + mDividerHeight;
-            }
-            mLrcEntryList.get(line).setOffset(offset);
+        public LyricInfo() {
+            song_lines = new ArrayList<>();
         }
 
-        return mLrcEntryList.get(line).getOffset();
-    }
-
-    private float getLrcWidth() {
-        return getWidth() - mLrcPadding * 2;
-    }
-
-    private void runOnUi(Runnable r) {
-        if (Looper.myLooper() == Looper.getMainLooper()) {
-            r.run();
-        } else {
-            post(r);
+        public void addSong_lines(LineInfo lineInfo) {
+            if (lineInfo != null)
+                song_lines.add(lineInfo);
         }
-    }
 
-    private Object getFlag() {
-        return mFlag;
-    }
+        public List<LineInfo> getSong_lines() {
+            return song_lines;
+        }
 
-    private void setFlag(Object flag) {
-        this.mFlag = flag;
+        public void setSong_lines(List<LineInfo> song_lines) {
+            this.song_lines = song_lines;
+        }
+
+        public String getSong_artist() {
+            return song_artist;
+        }
+
+        public void setSong_artist(String song_artist) {
+            this.song_artist = song_artist;
+        }
+
+        public String getSong_title() {
+            return song_title;
+        }
+
+        public void setSong_title(String song_title) {
+            this.song_title = song_title;
+        }
+
+        public String getSong_album() {
+            return song_album;
+        }
+
+        public void setSong_album(String song_album) {
+            this.song_album = song_album;
+        }
+
+        public long getSong_offset() {
+            return song_offset;
+        }
+
+        public void setSong_offset(long song_offset) {
+            this.song_offset = song_offset;
+        }
     }
 }

@@ -139,9 +139,9 @@
 
         </LinearLayout>
 
-        <android.support.v7.widget.AppCompatSeekBar
-            android:id="@+id/seek_bar"
-            style="?android:attr/progressBarStyleHorizontal"
+
+        <FrameLayout
+            android:id="@+id/content_seek_bar"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginStart="16dp"
@@ -152,7 +152,12 @@
             app:layout_constraintEnd_toEndOf="parent"
             app:layout_constraintStart_toStartOf="parent"
             app:layout_constraintTop_toBottomOf="@+id/linearLayout4"
-            app:layout_constraintVertical_bias="0.0" />
+            app:layout_constraintVertical_bias="0.0">
+
+
+        </FrameLayout>
+
+
 
 
         <LinearLayout
@@ -166,7 +171,7 @@
             app:layout_constraintBottom_toBottomOf="parent"
             app:layout_constraintEnd_toEndOf="parent"
             app:layout_constraintStart_toStartOf="parent"
-            app:layout_constraintTop_toBottomOf="@+id/seek_bar">
+            app:layout_constraintTop_toBottomOf="@+id/content_seek_bar">
 
 
             <ImageView
@@ -178,12 +183,16 @@
                 android:src="@drawable/ic_move_back" />
 
 
-            <ImageView
-                android:id="@+id/play"
-                android:layout_width="0dp"
-                android:layout_height="37dp"
+            <FrameLayout
+                android:id="@+id/content_paly"
                 android:layout_weight="1"
-                android:src="@drawable/ic_play_pause" />
+                android:layout_width="0dp"
+                android:layout_height="37dp">
+
+
+            </FrameLayout>
+
+
 
 
             <ImageView

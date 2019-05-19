@@ -9,11 +9,9 @@ import android.widget.Toast;
 
 import com.tree.shu.elf.R;
 import com.tree.shu.elf.ViewControlContainer;
-import com.tree.shu.elf.activity.MainActivity;
 import com.tree.shu.elf.activity.PlayActivity;
 import com.tree.shu.elf.tools.image.MyMessage;
 
-import java.util.List;
 import java.util.concurrent.Callable;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
@@ -28,6 +26,10 @@ public class ThreadPoolUtils {
     public final int UP_MAIN_VIEW = 3;
     public final int SHOW_SHORT_TOAST = 4;
     public final int SHOW_LONG_TOAST = 5;
+    public final int UPDATA_SEEK_BAR = 6;
+    public final int LOAD_LRC = 7;
+    private static final int REFRESH = 8;
+    private static final int CLEAR_DRAGGED = 9;
 
 
     private static ThreadPoolUtils threadPoolUtils;//静态的对象引用
@@ -61,7 +63,24 @@ public class ThreadPoolUtils {
                 case SHOW_SHORT_TOAST:
                     Toast.makeText(((PlayActivity) ViewControlContainer.getInstance().getPlayActivity()), ((String) msg.obj), Toast.LENGTH_SHORT).show();
                     break;
-
+                case UPDATA_SEEK_BAR:
+                    ViewControlContainer.getInstance().getSeek_bar_in_playactivity().setProgress(msg.arg1);
+                    break;
+                case LOAD_LRC:
+                    try {
+//                        ViewControlContainer.getInstance().getPlayLrcView().loadLrc((String) msg.obj);
+                    } catch (Exception e) {
+                        e.printStackTrace();
+                    }
+                    break;
+                case REFRESH:
+//                    LrcView lrcView = ViewControlContainer.getInstance().getPlayLrcView();
+//                    lrcView.REFRESH();
+                    break;
+                case CLEAR_DRAGGED:
+//                    LrcView lrcView1 = ViewControlContainer.getInstance().getPlayLrcView();
+//                    lrcView1.backToPlayingLine(lrcView1.getmDragged(), 0);
+                    break;
             }
         }
     };

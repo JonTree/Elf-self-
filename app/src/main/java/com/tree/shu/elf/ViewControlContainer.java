@@ -1,6 +1,7 @@
 package com.tree.shu.elf;
 
 import android.content.Intent;
+import android.os.Message;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.FrameLayout;
@@ -8,14 +9,19 @@ import android.widget.GridLayout;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.RelativeLayout;
+import android.widget.SeekBar;
 
 import com.tree.shu.elf.activity.IActivity;
 import com.tree.shu.elf.activity.MainActivity;
 import com.tree.shu.elf.activity.PlayActivity;
+import com.tree.shu.elf.tools.InternetUtils;
 import com.tree.shu.elf.tools.MyApplication;
+import com.tree.shu.elf.tools.ThreadPoolUtils;
 import com.tree.shu.elf.view.LrcView;
 
-import java.io.File;
+import org.json.JSONException;
+import org.json.JSONObject;
+
 import java.util.ArrayList;
 import java.util.List;
 
@@ -34,12 +40,17 @@ public class ViewControlContainer implements View.OnClickListener {
     private ImageView mood_unhappy;
     private LinearLayout content_evaluate;
     private ImageView play_image_view_botton;
+    private ImageView play_button_in_playactivity;
+    private SeekBar seek_bar_in_playactivity;
     private List<ImageView> moodList;
     private String presentMood;
     private IActivity mainActivity;
     private IActivity playActivity;
 
     LrcView playLrcView;
+
+    boolean isOtherSeekBarUP = false;
+
 
     public IActivity getMainActivity() {
         return mainActivity;
@@ -115,17 +126,38 @@ public class ViewControlContainer implements View.OnClickListener {
             content_fra_evaluation_botton.addView(content_evaluate);
         }
         {
-            playLrcView = (LrcView) View.inflate(MyApplication.getContext(), R.layout.lrc_view, null);
+//           playLrcView = (LrcView) View.inflate(MyApplication.getContext(), R.layout.lrc_view, null);
+            play_button_in_playactivity = (ImageView) View.inflate(MyApplication.getContext(),R.layout.button_paly,null);
+            play_button_in_playactivity.setOnClickListener(this);
+            seek_bar_in_playactivity = (SeekBar) View.inflate(MyApplication.getContext(), R.layout.seek_bar, null);
         }
     }
 
-    public LrcView getPlayLrcView() {
-        return playLrcView;
+    public void removeParent() {
+        if (seek_bar_in_playactivity.getParent() != null) {
+            ((ViewGroup) seek_bar_in_playactivity.getParent()).removeAllViews();
+        }
+        if (play_button_in_playactivity.getParent() != null) {
+            ((ViewGroup) play_button_in_playactivity.getParent()).removeAllViews();
+        }
+//        if (playLrcView.getParent() != null) {
+//            ((ViewGroup) playLrcView.getParent()).removeAllViews();
+//        }
     }
 
-    private void loadLrc(File file) {
-        playLrcView.loadLrc(file);
+
+    public SeekBar getSeek_bar_in_playactivity() {
+        return seek_bar_in_playactivity;
     }
+
+    public ImageView getPlay_button_in_playactivity() {
+        return play_button_in_playactivity;
+    }
+
+
+//    public LrcView getPlayLrcView() {
+//        return playLrcView;
+//    }
 
 
     public RelativeLayout getContent_fra_evaluation() {
@@ -133,6 +165,53 @@ public class ViewControlContainer implements View.OnClickListener {
     }
 
 
+    public void upSeekBar(int time) {
+        Message message = new Message();
+        message.what = ThreadPoolUtils.getThreadPoolUtils().UPDATA_SEEK_BAR;
+        message.arg1 = time;
+        ThreadPoolUtils.getThreadPoolUtils().getHandler().sendMessage(message);
+    }
+
+    public void startSeekBar() {
+        Runnable runnable = () -> {
+            upLrcView();
+            for (; ; ) {
+                try {
+                    Thread.sleep(1000);
+                } catch (InterruptedException e) {
+                    e.printStackTrace();
+                }
+                if (isOtherSeekBarUP) {
+                    return;
+                }
+//                ViewControlContainer.getInstance().getPlayLrcView().updateTime(Music.getInstance().getMediaPlayer().getCurrentPosition());
+//                playLrcView.updateTime(Music.getInstance().getMediaPlayer().getCurrentPosition());
+                upSeekBar(Music.getInstance().getMediaPlayer().getCurrentPosition());
+            }
+        };
+        new Thread(runnable).start();
+    }
+
+    public void upLrcView() {
+        Runnable runnable = () -> {
+            String data = InternetUtils.get(
+                    Music.getInstance().getURL_LRC()
+                            + Music.getInstance().getSongListInformationBean().getPlaylist().getTracks()
+                            .get(Music.getInstance().getNowPaly()).getId());
+            try {
+                JSONObject jsonObject = new JSONObject(data);
+                String lrc = (String) jsonObject.getJSONObject("lrc").get("lyric");
+                Message message = new Message();
+                message.what = ThreadPoolUtils.getThreadPoolUtils().LOAD_LRC;
+                message.obj = lrc;
+                ThreadPoolUtils.getThreadPoolUtils().getHandler().sendMessage(message);
+            } catch (JSONException e) {
+                e.printStackTrace();
+            }
+
+        };
+        ThreadPoolUtils.getThreadPoolUtils().execute(runnable);
+    }
 
     @Override
     public void onClick(View v) {
@@ -154,6 +233,7 @@ public class ViewControlContainer implements View.OnClickListener {
                         no_evaluate_content.addView(view);
                         yes_evaluate_content.addView(v);
                         presentMood = (String) v.getTag();
+                        Music.getInstance().setIsFirstStart(false);
                         mainActivity.songChange();
                     }
                 }
@@ -161,8 +241,25 @@ public class ViewControlContainer implements View.OnClickListener {
             case R.id.play_image_view_botton:
                 Intent intent = new Intent(MyApplication.getContext(), PlayActivity.class);
                 MyApplication.getContext().startActivity(intent);
+                break;
+            case R.id.play:
+                if (Music.getInstance().getIsPause()) {
+                    Music.getInstance().play();
+                    play_button_in_playactivity.setImageResource(R.drawable.ic_play_running);
+                    Music.getInstance().setIsPause(false);
+                }else {
+                    if (Music.getInstance().getMediaPlayer().isPlaying()) {
+                        Music.getInstance().setIsPause(true);
+                        Music.getInstance().getMediaPlayer().pause();
+                        play_button_in_playactivity.setImageResource(R.drawable.ic_play_pause);
+                    }
+                }
+                break;
+
         }
     }
+
+
 
     public String getPresentMood() {
         return presentMood;
